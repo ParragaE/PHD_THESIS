@@ -1,0 +1,31 @@
+# prediction.py
+# Este módulo maneja la predicción lineal y el cálculo del margen de error.
+
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import mean_squared_error
+
+def prediction_lineal(summary, X_metric, x2_metric, y_metric):
+    """
+    Realiza una regresión lineal múltiple y calcula el margen de error.
+    """
+    # Modelo lineal
+    linear_model = LinearRegression()
+    X = summary[[x2_metric, X_metric]].values
+    y = summary[f'{y_metric}_mean'].values
+
+    linear_model.fit(X, y)
+    y_pred_linear = linear_model.predict(X)
+
+    # Calcular el error cuadrático medio
+    mse_linear = mean_squared_error(y, y_pred_linear)
+    print(f'MSE Lineal para {y_metric}: {mse_linear}')
+
+    # Calcular el margen de error (95% intervalo de confianza)
+    margin_of_error = 1.96 * summary[f'{y_metric}_std'].mean()
+
+    # Coeficientes del modelo lineal
+    coef = linear_model.coef_
+    intercept = linear_model.intercept_
+    print(f"Modelo lineal para {y_metric}: {y_metric} = {intercept:.4f} + {coef[0]:.4f} * {x2_metric} + {coef[1]:.4f} * {X_metric}")
+
+    return y_pred_linear, margin_of_error
