@@ -1,0 +1,50 @@
+{
+  "module": "DeepTuneIO Module 12 — Article Validation / Golden Reference Builder",
+  "module_version": "1.1.1",
+  "extractor_version": "1.1.1",
+  "article_id": "Article_01",
+  "generated_at_utc": "2026-08-24T16:00:23.718916+00:00",
+  "source_pdf": "F:\\NoteBooks\\CORA_DR_UAB\\Article_01_Parallel_IO_Analysis\\Documentation\\s11227-025-07986-1.pdf",
+  "source_pdf_sha256": "8393181f65dee0a676b504ace90a0859647a008a0e9671d57851545c43aa90db",
+  "pdf_pages": 56,
+  "pages_with_extractable_text": 56,
+  "golden_reference_rows": 94,
+  "golden_reference_source_type_counts": {
+    "ARTICLE_TEXT": 58,
+    "ARTICLE_TABLE": 24,
+    "ARTICLE_FIGURE": 12
+  },
+  "historical_reference_baseline": 82,
+  "fig8_added_reference_count_expected": 12,
+  "expected_minimum_reference_rows": 94,
+  "reference_coverage_status": "PASS",
+  "audit_rows": 38,
+  "source_comparison_rows": 82,
+  "source_comparison_status_counts": {
+    "MATCH": 24,
+    "TABLE_ONLY": 24,
+    "TEXT_ONLY": 22,
+    "DIFFERENT_SOURCE_VALUES": 12
+  },
+  "policy": {
+    "plot_digitization": false,
+    "interpolation": false,
+    "ocr": false,
+    "only_explicit_numeric_values": true,
+    "duplicate_precedence": [
+      "ARTICLE_TEXT",
+      "ARTICLE_FIGURE",
+      "ARTICLE_TABLE"
+    ],
+    "manual_figure_label_transcription": true,
+    "figure_label_estimation": false,
+    "cross_source_comparison_before_resolution": true,
+    "figure_specific_text_scoping": true,
+    "publication_precision_metadata": true
+  },
+  "outputs": {
+    "golden_reference_csv": "F:\\NoteBooks\\CORA_DR_UAB\\Article_01_Parallel_IO_Analysis\\Scripts\\DeepTuneIO\\12_Article_Validation\\12_Article_Validation_v1_5_1\\Config\\article01_golden_reference.csv",
+    "audit_csv": "F:\\NoteBooks\\CORA_DR_UAB\\Article_01_Parallel_IO_Analysis\\Scripts\\DeepTuneIO\\12_Article_Validation\\12_Article_Validation_v1_5_1\\Config\\article01_golden_reference_audit.csv",
+    "source_comparison_csv": "F:\\NoteBooks\\CORA_DR_UAB\\Article_01_Parallel_IO_Analysis\\Scripts\\DeepTuneIO\\12_Article_Validation\\12_Article_Validation_v1_5_1\\Config\\article01_golden_reference_source_comparison.csv"
+  }
+}

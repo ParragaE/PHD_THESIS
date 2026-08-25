@@ -1,0 +1,83 @@
+article_id,figure,application,filesystem,stripe_count,file_format,data_loading_mode,nodes,process_io,metric,text_value,table_value,absolute_difference,relative_difference_pct,status,text_source_reference,table_source_reference
+Article_01,6,DLIO,lustre,1,hdf5,shared,1,4,bandwidth,1673.0,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 6",
+Article_01,6,DLIO,lustre,1,hdf5,shared,1,4,io_time,29.5,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 6",
+Article_01,6,DLIO,lustre,1,hdf5,shared,1,4,iops,422.6,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 6",
+Article_01,6,DLIO,lustre,1,hdf5,shared,1,4,runtime,58.5,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 6",
+Article_01,6,DLIO,lustre,12,hdf5,shared,12,48,bandwidth,18687.9,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 6",
+Article_01,6,DLIO,lustre,12,hdf5,shared,12,48,io_time,2.7,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 6",
+Article_01,6,DLIO,lustre,12,hdf5,shared,12,48,iops,5255.7,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 6",
+Article_01,6,DLIO,lustre,12,hdf5,shared,12,48,runtime,6.4,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 6",
+Article_01,7,DLIO,lustre,1,npz,multi,1,4,bandwidth,633.4,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 7",
+Article_01,7,DLIO,lustre,1,npz,multi,1,4,iops,158.6,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 7",
+Article_01,7,DLIO,lustre,8,npz,multi,8,32,bandwidth,2275.5,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 7",
+Article_01,7,DLIO,lustre,8,npz,multi,8,32,iops,577.0,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 7",
+Article_01,7,DLIO,lustre,12,npz,multi,12,48,bandwidth,1722.6,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 7",
+Article_01,7,DLIO,lustre,12,npz,multi,12,48,iops,439.8,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 7",
+Article_01,9,DLIO,lustre,1,tfrecord,multi,1,4,bandwidth,743.0,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 9",
+Article_01,9,DLIO,lustre,1,tfrecord,multi,1,4,io_time,132.4,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 9",
+Article_01,9,DLIO,lustre,1,tfrecord,multi,1,4,iops,744.1,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 9",
+Article_01,9,DLIO,lustre,1,tfrecord,multi,1,4,runtime,152.0,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 9",
+Article_01,9,DLIO,lustre,12,tfrecord,multi,12,48,bandwidth,22777.2,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 9",
+Article_01,9,DLIO,lustre,12,tfrecord,multi,12,48,io_time,4.3,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 9",
+Article_01,9,DLIO,lustre,12,tfrecord,multi,12,48,iops,22788.6,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 9",
+Article_01,9,DLIO,lustre,12,tfrecord,multi,12,48,runtime,7.0,,,,TEXT_ONLY,"Article 01, Sec. 3.6.1, Fig. 9",
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,1,4,bandwidth,187.43,187.43,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 11","Article 01, Table 11"
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,1,4,io_time,11.21,11.21,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 11","Article 01, Table 11"
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,1,4,iops,48111.96,48112.0,0.040000000000873115,8.313934153822979e-05,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 11","Article 01, Table 11"
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,1,4,memory_usage,,90.0,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,1,4,runtime,,26808.03,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,16,64,bandwidth,400.5,400.5,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 11","Article 01, Table 11"
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,16,64,io_time,5.8,5.8,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 11","Article 01, Table 11"
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,16,64,iops,117211.29,117211.0,0.28999999999359716,0.00024741705129518315,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 11","Article 01, Table 11"
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,16,64,memory_usage,,643.0,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,11,DeepGalaxy,lustre,1,hdf5,shared,16,64,runtime,,2792.9,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,1,4,bandwidth,523.43,523.43,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 12","Article 01, Table 12"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,1,4,io_time,30.13,30.13,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 12","Article 01, Table 12"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,1,4,iops,133083.07,133083.0,0.07000000000698492,5.2598754166185705e-05,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 12","Article 01, Table 12"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,1,4,memory_usage,,122.0,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,1,4,runtime,,27959.11,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,16,64,bandwidth,9827.04,9827.04,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 12","Article 01, Table 12"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,16,64,io_time,16.36,16.36,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 12","Article 01, Table 12"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,16,64,iops,2500443.1,2500443.0,0.10000000009313226,3.999291329301738e-06,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 12","Article 01, Table 12"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,16,64,memory_usage,,662.0,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,12,DeepGalaxy,lustre,1,hdf5,shared_reload_shuffle,16,64,runtime,,2591.08,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,1,4,bandwidth,159.2,159.2,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 13","Article 01, Table 11"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,1,4,io_time,12.26,12.26,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 13","Article 01, Table 11"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,1,4,iops,40866.03,40866.0,0.029999999998835847,7.341065922487116e-05,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 13","Article 01, Table 11"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,1,4,memory_usage,,89.0,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,1,4,runtime,,31389.29,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,16,64,bandwidth,325.87,325.87,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 13","Article 01, Table 11"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,16,64,io_time,7.1,7.1,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 13","Article 01, Table 11"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,16,64,iops,95358.96,95359.0,0.03999999999359716,4.1946748595934476e-05,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 13","Article 01, Table 11"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,16,64,memory_usage,,641.0,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,13,DeepGalaxy,lustre,2,hdf5,shared,16,64,runtime,,2538.88,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,1,4,bandwidth,304.19,304.19,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 14","Article 01, Table 12"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,1,4,io_time,50.35,50.35,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 14","Article 01, Table 12"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,1,4,iops,77347.03,77347.0,0.029999999998835847,3.878624898035586e-05,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 14","Article 01, Table 12"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,1,4,memory_usage,,119.0,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,1,4,runtime,,28935.78,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,16,64,bandwidth,6918.71,6918.71,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 14","Article 01, Table 12"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,16,64,io_time,23.02,23.02,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 14","Article 01, Table 12"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,16,64,iops,1760368.51,1760368.0,0.5100000000093132,2.897121511009705e-05,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 14","Article 01, Table 12"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,16,64,memory_usage,,662.0,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,14,DeepGalaxy,lustre,2,hdf5,shared_reload_shuffle,16,64,runtime,,2923.26,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,1,4,bandwidth,251.88,251.88,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 15","Article 01, Table 11"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,1,4,io_time,8.13,8.13,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 15","Article 01, Table 11"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,1,4,iops,64654.04,64654.0,0.040000000000873115,6.186778853724923e-05,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 15","Article 01, Table 11"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,1,4,memory_usage,,89.0,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,1,4,runtime,,28736.68,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,16,64,bandwidth,348.38,348.38,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 15","Article 01, Table 11"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,16,64,io_time,6.59,6.59,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 15","Article 01, Table 11"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,16,64,iops,101945.09,101945.0,0.08999999999650754,8.828289763745896e-05,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 15","Article 01, Table 11"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,16,64,memory_usage,,633.0,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,15,DeepGalaxy,lustre,4,hdf5,shared,16,64,runtime,,2789.8,,,TABLE_ONLY,,"Article 01, Table 11"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,1,4,bandwidth,289.94,289.94,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 16","Article 01, Table 12"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,1,4,io_time,54.35,54.35,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 16","Article 01, Table 12"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,1,4,iops,73718.55,73718.0,0.5500000000029104,0.0007460864375090349,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 16","Article 01, Table 12"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,1,4,memory_usage,,120.0,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,1,4,runtime,,28320.95,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,16,64,bandwidth,6807.47,6807.47,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 16","Article 01, Table 12"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,16,64,io_time,24.31,24.31,0.0,0.0,MATCH,"Article 01, Sec. 4.6.1, Fig. 16","Article 01, Table 12"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,16,64,iops,1732473.07,1732473.0,0.07000000006519258,4.040467012484038e-06,DIFFERENT_SOURCE_VALUES,"Article 01, Sec. 4.6.1, Fig. 16","Article 01, Table 12"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,16,64,memory_usage,,665.0,,,TABLE_ONLY,,"Article 01, Table 12"
+Article_01,16,DeepGalaxy,lustre,4,hdf5,shared_reload_shuffle,16,64,runtime,,2583.75,,,TABLE_ONLY,,"Article 01, Table 12"
