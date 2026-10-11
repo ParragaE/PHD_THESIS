@@ -11,12 +11,37 @@ Outputs:
 """
 
 from __future__ import annotations
-import argparse, csv, os, re, sys
+import argparse, csv, os, re, sys, json
 from dataclasses import dataclass, asdict
 from pathlib import Path
 from typing import Optional
 
-VERSION = "3.0.0"
+def windows_long_path(path: Path) -> Path:
+    """
+    Convert a Path to Windows extended-length path syntax.
+
+    On non-Windows systems the path is returned unchanged.
+    """
+    path = path.expanduser().resolve()
+
+    if os.name != "nt":
+        return path
+
+    path_str = str(path)
+
+    # Already normalized
+    if path_str.startswith("\\\\?\\"):
+        return Path(path_str)
+
+    # UNC path
+    if path_str.startswith("\\\\"):
+        return Path("\\\\?\\UNC\\" + path_str[2:])
+
+    # Local Windows path
+    return Path("\\\\?\\" + path_str)
+
+
+VERSION = "3.1.0"
 
 FORMAT_MAPPING = {
     "hdf5": "h5", "h5": "h5",
@@ -29,11 +54,29 @@ class ParserMetadata:
     application: str
     scenario: str
     dataset_label: str
+
     parser_file: str
     parser_path: str
+
     jobid: Optional[str]
+    exe: Optional[str]
+
+    nodes: Optional[int]
+    processes: Optional[int]
+    processes_per_node: Optional[int]
+    epochs: Optional[int]
+
+    dataset: Optional[str]
     input_file: Optional[str]
     file_format: Optional[str]
+
+    data_distribution: Optional[str]
+    access_mode: Optional[str]
+    filesystem: Optional[str]
+
+    stripe_size: Optional[str]
+    stripe_count: Optional[int]
+
     status: str
     message: str
 
@@ -60,7 +103,7 @@ def extract_from_exe(line: str) -> tuple[Optional[str], Optional[str]]:
     m = re.search(r"(?:^|\s)-f\s+([^\s]+)", line)
     if m:
         value = m.group(1).strip("'\"")
-        if value.lower() in {"hdf5", "h5", "npz", "tfrecord", "tfrecords", "csv"}:
+        if value.lower() in {"hdf5", "h5", "npz", "tfrecord", "tfrecords", "jpeg", "csv"}:
             return value, normalize_format(value)
         return Path(value).name, infer_format_from_name(value)
 
@@ -71,7 +114,505 @@ def extract_from_exe(line: str) -> tuple[Optional[str], Optional[str]]:
             return Path(value).name, infer_format_from_name(value)
     return None, None
 
-def parse_file(path: Path, application: str, scenario: str, dataset_label: str) -> ParserMetadata:
+def extract_deeptuneio_training_from_filename(filename: str) -> dict:
+    """
+    Extract experimental metadata encoded in a DeepTuneIO-Training
+    Parser/Darshan filename.
+
+    Supported examples include:
+
+        N1p4pp4e5_TinyImageNet200_...
+        N2p8ppn4e5_TinyImageNet200_...
+        N2p16pp8e5_TinyImageNet200_...
+
+    Both 'pp4' and 'ppn4' forms are accepted.
+    """
+
+    name = Path(filename).name
+
+    metadata = {
+        "nodes": None,
+        "processes": None,
+        "processes_per_node": None,
+        "epochs": None,
+        "dataset": None,
+        "file_format": None,
+        "data_distribution": None,
+        "access_mode": None,
+        "filesystem": None,
+        "stripe_size": None,
+        "stripe_count": None,
+    }
+
+    # --------------------------------------------------
+    # Execution configuration
+    # --------------------------------------------------
+
+    m = re.search(
+        r'(?:^|_)N(\d+)p(\d+)ppn?(\d+)e(\d+)(?:_|$)',
+        name,
+        re.IGNORECASE,
+    )
+
+    if m:
+        metadata["nodes"] = int(m.group(1))
+        metadata["processes"] = int(m.group(2))
+        metadata["processes_per_node"] = int(m.group(3))
+        metadata["epochs"] = int(m.group(4))
+
+    else:
+        # Some filenames may not contain pp/ppn.
+        m = re.search(
+            r'(?:^|_)N(\d+)p(\d+).*?e(\d+)(?:_|$)',
+            name,
+            re.IGNORECASE,
+        )
+
+        if m:
+            metadata["nodes"] = int(m.group(1))
+            metadata["processes"] = int(m.group(2))
+            metadata["epochs"] = int(m.group(3))
+
+    # --------------------------------------------------
+    # Dataset
+    # --------------------------------------------------
+
+    m = re.search(
+        r'_(TinyImageNet(?:-?200)?)_',
+        name,
+        re.IGNORECASE,
+    )
+
+    if m:
+        metadata["dataset"] = m.group(1)
+
+    # --------------------------------------------------
+    # File format
+    # --------------------------------------------------
+
+    if re.search(r'_jpeg_', name, re.IGNORECASE):
+        metadata["file_format"] = "jpeg"
+
+    elif re.search(r'_HDF5_', name, re.IGNORECASE):
+        metadata["file_format"] = "hdf5"
+
+    # --------------------------------------------------
+    # HDF5 organization
+    # --------------------------------------------------
+
+    if re.search(r'_HDF5_Dist_', name, re.IGNORECASE):
+        metadata["data_distribution"] = "Distributed"
+
+    elif re.search(r'_HDF5_Full_', name, re.IGNORECASE):
+        metadata["data_distribution"] = "Full"
+
+    # --------------------------------------------------
+    # Access mode
+    # --------------------------------------------------
+
+    if re.search(r'_shared_', name, re.IGNORECASE):
+        metadata["access_mode"] = "Shared"
+
+    # --------------------------------------------------
+    # Filesystem
+    # --------------------------------------------------
+
+    if re.search(r'_lustre_', name, re.IGNORECASE):
+        metadata["filesystem"] = "lustre"
+
+    elif re.search(r'_nfs_', name, re.IGNORECASE):
+        metadata["filesystem"] = "nfs"
+
+    # --------------------------------------------------
+    # Lustre configuration
+    # --------------------------------------------------
+
+    m = re.search(
+        r'_ss(\d+)(KB|MB|GB)',
+        name,
+        re.IGNORECASE,
+    )
+
+    if m:
+        metadata["stripe_size"] = (
+            f"{m.group(1)}{m.group(2).upper()}"
+        )
+
+    m = re.search(
+        r'sc(\d+)',
+        name,
+        re.IGNORECASE,
+    )
+
+    if m:
+        metadata["stripe_count"] = int(m.group(1))
+
+    return metadata
+
+def extract_deepgalaxy_from_filename(filename: str) -> dict:
+    """Recover only explicitly encoded DeepGalaxy metadata."""
+    result = {}
+    m = re.search(r"(?:^|_)N(\d+)p(\d+)e(\d+)(?:_|$)", filename, re.I)
+    if m:
+        result.update(nodes=int(m[1]), processes=int(m[2]), epochs=int(m[3]))
+        if int(m[1]) and int(m[2]) % int(m[1]) == 0:
+            result["processes_per_node"] = int(m[2]) // int(m[1])
+    m = re.search(r"_(nfs|lustre)(?:_|\.)", filename, re.I)
+    if m:
+        result["filesystem"] = m[1].lower()
+    m = re.search(r"_ss(\d+(?:KB|MB|GB))", filename, re.I)
+    if m:
+        result["stripe_size"] = m[1].upper()
+    m = re.search(r"_sc(\d+)(?:_|\.)", filename, re.I)
+    if m:
+        result["stripe_count"] = int(m[1])
+    return result
+
+
+def extract_dlio_from_filename(filename: str) -> dict:
+    """Conservative extraction: do not infer unverified access semantics."""
+    result = {}
+    m = re.search(r"(?:^|_)N(\d+)p(\d+)(?:_|$)", filename, re.I)
+    if m:
+        result.update(nodes=int(m[1]), processes=int(m[2]))
+        if int(m[1]) and int(m[2]) % int(m[1]) == 0:
+            result["processes_per_node"] = int(m[2]) // int(m[1])
+    m = re.search(r"_(nfs|lustre)(?:_|\.)", filename, re.I)
+    if m:
+        result["filesystem"] = m[1].lower()
+    return result
+
+
+def load_experiment_manifest(path: Optional[Path]) -> dict:
+    """Read JSON list/dict or CSV rows indexed by JobID."""
+    if path is None:
+        return {}
+    if not path.is_file():
+        raise ValueError(f"Experiment manifest not found: {path}")
+    if path.suffix.lower() == ".json":
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+        if isinstance(data, dict) and "jobs" in data:
+            data = data["jobs"]
+        if isinstance(data, dict) and "jobid" in data:
+            data = [data]
+        if isinstance(data, dict):
+            data = [dict(v, jobid=k) for k, v in data.items()]
+    elif path.suffix.lower() == ".csv":
+        with path.open(encoding="utf-8-sig", newline="") as fh:
+            data = list(csv.DictReader(fh))
+    else:
+        raise ValueError("Experiment manifest must be .json or .csv")
+    result = {}
+    for item in data:
+        jid = str(item.get("jobid", "")).strip()
+        if jid:
+            if jid in result:
+                raise ValueError(f"Duplicate JobID in experiment manifest: {jid}")
+            result[jid] = item
+    return result
+
+
+EXPERIMENT_FIELDS = (
+    "nodes", "processes_per_node", "epochs", "dataset", "input_file",
+    "file_format", "data_distribution", "access_mode", "filesystem",
+    "stripe_size", "stripe_count",
+)
+INTEGER_FIELDS = {"nodes", "processes_per_node", "epochs", "stripe_count"}
+
+
+def merge_experiment_manifest(record: ParserMetadata, metadata: dict) -> ParserMetadata:
+    """Manifest overrides inferred values, but never the measured Darshan process count."""
+    issues = []
+    for field in EXPERIMENT_FIELDS:
+        value = metadata.get(field)
+        if value is None or str(value).strip() == "":
+            continue
+        if field in INTEGER_FIELDS:
+            try:
+                value = int(value)
+            except (ValueError, TypeError):
+                issues.append(f"invalid_manifest_{field}")
+                continue
+        previous = getattr(record, field)
+        if previous is not None and str(previous).lower() != str(value).lower():
+            issues.append(f"manifest_override_{field}:{previous}->{value}")
+        setattr(record, field, value)
+    if record.nodes and record.processes and record.processes_per_node:
+        if record.nodes * record.processes_per_node != record.processes:
+            issues.append("topology_mismatch_manifest")
+    if issues:
+        record.message = (record.message + ";" + ";".join(issues)).strip(";")
+        if any(x.startswith(("invalid_", "topology_mismatch")) for x in issues):
+            record.status = "incomplete"
+    return record
+
+
+def parse_file(
+    path: Path,
+    application: str,
+    scenario: str,
+    dataset_label: str,
+) -> ParserMetadata:
+
+    jobid = None
+    exe = None
+    input_file = None
+    file_format_exe = None
+    nprocs_header = None
+
+    messages = []
+
+    # --------------------------------------------------
+    # 1. Campaign metadata
+    # --------------------------------------------------
+
+    filename_metadata = {}
+
+    if application.lower() == "deepgalaxy":
+        filename_metadata = extract_deepgalaxy_from_filename(path.name)
+    elif application.lower() == "dliov1":
+        filename_metadata = extract_dlio_from_filename(path.name)
+    elif application == "DeepTuneIO-Training":
+        filename_metadata = extract_deeptuneio_training_from_filename(
+            path.name
+        )
+
+    # --------------------------------------------------
+    # 2. Darshan Parser header
+    # --------------------------------------------------
+
+    try:
+        with windows_long_path(path).open(
+            "r",
+            encoding="utf-8",
+            errors="replace",
+        ) as fh:
+
+            for line in fh:
+
+                # JobID
+                if jobid is None:
+                    m = re.match(
+                        r"#\s*jobid:\s*(\d+)",
+                        line,
+                        re.IGNORECASE,
+                    )
+                    if m:
+                        jobid = m.group(1)
+
+                # Number of processes
+                if nprocs_header is None:
+                    m = re.match(
+                        r"#\s*nprocs:\s*(\d+)",
+                        line,
+                        re.IGNORECASE,
+                    )
+                    if m:
+                        nprocs_header = int(m.group(1))
+
+                # Executable
+                if line.startswith("# exe:"):
+
+                    exe = line.split(
+                        ":",
+                        1,
+                    )[1].strip()
+
+                    input_file, file_format_exe = (
+                        extract_from_exe(line)
+                    )
+
+                if (
+                    jobid is not None
+                    and nprocs_header is not None
+                    and exe is not None
+                ):
+                    break
+
+    except OSError as exc:
+
+        return ParserMetadata(
+            application=application,
+            scenario=scenario,
+            dataset_label=dataset_label,
+
+            parser_file=path.name,
+            parser_path=str(path),
+
+            jobid=None,
+            exe=None,
+
+            nodes=None,
+            processes=None,
+            processes_per_node=None,
+            epochs=None,
+
+            dataset=None,
+            input_file=None,
+            file_format=None,
+
+            data_distribution=None,
+            access_mode=None,
+            filesystem=None,
+
+            stripe_size=None,
+            stripe_count=None,
+
+            status="error",
+            message=f"cannot_read_file:{exc}",
+        )
+
+    # --------------------------------------------------
+    # 3. Merge metadata
+    # --------------------------------------------------
+
+    nodes = filename_metadata.get("nodes")
+    processes_filename = filename_metadata.get("processes")
+    processes_per_node = filename_metadata.get(
+        "processes_per_node"
+    )
+    epochs = filename_metadata.get("epochs")
+
+    dataset = filename_metadata.get("dataset") or dataset_label
+
+    file_format_filename = filename_metadata.get(
+        "file_format"
+    )
+
+    data_distribution = filename_metadata.get(
+        "data_distribution"
+    )
+
+    access_mode = filename_metadata.get(
+        "access_mode"
+    )
+
+    filesystem = filename_metadata.get(
+        "filesystem"
+    )
+
+    stripe_size = filename_metadata.get(
+        "stripe_size"
+    )
+
+    stripe_count = filename_metadata.get(
+        "stripe_count"
+    )
+
+    # Header is authoritative for actual number of processes.
+    processes = (
+        nprocs_header
+        if nprocs_header is not None
+        else processes_filename
+    )
+
+    # Filename is preferred for format because DeepTuneIO-Training
+    # '# exe:' usually contains only the Python script.
+    file_format = (
+        file_format_filename
+        or file_format_exe
+    )
+
+    if processes_per_node is None and nodes and nprocs_header and nprocs_header % nodes == 0:
+        processes_per_node = nprocs_header // nodes
+
+    # --------------------------------------------------
+    # 4. Validation
+    # --------------------------------------------------
+
+    if not jobid:
+        messages.append("missing_jobid")
+
+    if processes is None:
+        messages.append("missing_processes")
+
+    if (
+        processes_filename is not None
+        and nprocs_header is not None
+        and processes_filename != nprocs_header
+    ):
+        messages.append(
+            f"process_mismatch:"
+            f"filename={processes_filename},"
+            f"header={nprocs_header}"
+        )
+
+    # Optional topology validation
+    if (
+        nodes is not None
+        and processes_per_node is not None
+        and processes_filename is not None
+    ):
+        expected_processes = nodes * processes_per_node
+
+        if expected_processes != processes_filename:
+            messages.append(
+                f"topology_mismatch:"
+                f"N={nodes},"
+                f"ppn={processes_per_node},"
+                f"p={processes_filename}"
+            )
+
+    # --------------------------------------------------
+    # 5. Status
+    # --------------------------------------------------
+
+    serious_messages = [
+        msg for msg in messages
+        if msg.startswith(
+            (
+                "missing_jobid",
+                "missing_processes",
+                "process_mismatch",
+                "topology_mismatch",
+            )
+        )
+    ]
+
+    status = (
+        "ok"
+        if not serious_messages
+        else "incomplete"
+    )
+
+    message = (
+        "metadata_extracted"
+        if not messages
+        else ";".join(messages)
+    )
+
+    return ParserMetadata(
+        application=application,
+        scenario=scenario,
+        dataset_label=dataset_label,
+
+        parser_file=path.name,
+        parser_path=str(path),
+
+        jobid=jobid,
+        exe=exe,
+
+        nodes=nodes,
+        processes=processes,
+        processes_per_node=processes_per_node,
+        epochs=epochs,
+
+        dataset=dataset,
+        input_file=input_file,
+        file_format=file_format,
+
+        data_distribution=data_distribution,
+        access_mode=access_mode,
+        filesystem=filesystem,
+
+        stripe_size=stripe_size,
+        stripe_count=stripe_count,
+
+        status=status,
+        message=message,
+    )
+
+def parse_file_o(path: Path, application: str, scenario: str, dataset_label: str) -> ParserMetadata:
     jobid = input_file = file_format = None
     messages = []
     try:
@@ -158,6 +699,8 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
             "<campaign-root>/results/Resource_Metadata."
         ),
     )
+    ap.add_argument("--experiment-manifest", type=Path, default=None,
+                    help="Optional CSV/JSON experimental metadata indexed by jobid.")
     ap.add_argument("--no-recursive", action="store_true",
                     help="Search only directly inside Parser directory.")
     ap.add_argument("--version", action="version", version=f"%(prog)s {VERSION}")
@@ -243,6 +786,12 @@ def main(argv: Optional[list[str]] = None) -> int:
     dataset_label = args.dataset_label or "unknown_dataset"
     scenario = args.scenario or "unknown_scenario"
 
+    try:
+        experiment_manifest = load_experiment_manifest(args.experiment_manifest)
+    except (ValueError, OSError, json.JSONDecodeError) as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
     records = [
         parse_file(
             p,
@@ -252,24 +801,133 @@ def main(argv: Optional[list[str]] = None) -> int:
         )
         for p in files
     ]
+    
+    for record in records:
+        if record.jobid and record.jobid in experiment_manifest:
+            merge_experiment_manifest(record, experiment_manifest[record.jobid])
 
+    # Ensure output directory exists
     output_dir.mkdir(parents=True, exist_ok=True)
 
     stem = f"{application}_{dataset_label}_{scenario}_{args.event}"
-    csv_path = output_dir / f"03_jobids_from_parser_{stem}.csv"
-    manifest_path = output_dir / f"03_jobids_{stem}.txt"
+    csv_path = (
+        output_dir
+        / f"03_jobids_from_parser_{stem}.csv"
+    )
 
+    manifest_path = (
+        output_dir
+        / f"03_jobids_from_parser_{stem}.txt"
+    )
+
+   
     fields = list(asdict(records[0]).keys())
-    with csv_path.open("w", newline="", encoding="utf-8") as fh:
+    
+    with windows_long_path(csv_path).open(
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as fh:        
         writer = csv.DictWriter(fh, fieldnames=fields)
         writer.writeheader()
         writer.writerows(asdict(record) for record in records)
 
     jobids = sorted({r.jobid for r in records if r.jobid}, key=int)
-    manifest_path.write_text(
+
+    windows_long_path(manifest_path).write_text(
         "\n".join(jobids) + ("\n" if jobids else ""),
         encoding="utf-8",
     )
+    # ---------------------------------------------------------------------
+    # Generate enriched SEFF manifest
+    # ---------------------------------------------------------------------
+    # This CSV will be used as input by the cluster-side SEFF collector.
+    # Unlike the plain JobID manifest, it preserves the experimental
+    # metadata associated with every SLURM JobID.
+
+    seff_manifest_path = output_dir / f"03_seff_manifest_{stem}.csv"
+
+    seff_fields = [
+        "jobid",
+        "application",
+        "dataset_label",
+        "scenario",
+        "event",
+        "nodes",
+        "processes",
+        "processes_per_node",
+        "epochs",
+        "dataset",
+        "file_format",
+        "data_distribution",
+        "access_mode",
+        "filesystem",
+        "stripe_size",
+        "stripe_count",
+        "exe",
+        "parser_file",
+        "status",
+    ]
+
+    with windows_long_path(seff_manifest_path).open(
+        "w",
+        newline="",
+        encoding="utf-8",
+    ) as fh:
+
+        writer = csv.DictWriter(
+            fh,
+            fieldnames=seff_fields,
+        )
+
+        writer.writeheader()
+
+        # Avoid duplicated JobIDs.
+        seen_jobids = set()
+
+        for record in records:
+
+            if not record.jobid:
+                continue
+
+            if record.jobid in seen_jobids:
+                continue
+
+            seen_jobids.add(record.jobid)
+
+            writer.writerow({
+                "jobid": record.jobid,
+                "application": record.application,
+                "dataset_label": record.dataset_label,
+                "scenario": record.scenario,
+                "event": args.event,
+                "nodes": record.nodes,
+                "processes": record.processes,
+                "processes_per_node": record.processes_per_node,
+                "epochs": record.epochs,
+                "dataset": record.dataset,
+                "file_format": record.file_format,
+                "data_distribution": record.data_distribution,
+                "access_mode": record.access_mode,
+                "filesystem": record.filesystem,
+                "stripe_size": record.stripe_size,
+                "stripe_count": record.stripe_count,
+                "exe": record.exe,
+                "parser_file": record.parser_file,
+                "status": record.status,
+            })
+
+    quality_path = output_dir / f"03_metadata_quality_{stem}.csv"
+    with windows_long_path(quality_path).open("w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=["jobid", "field", "state", "value"])
+        writer.writeheader()
+        for record in records:
+            for field in EXPERIMENT_FIELDS:
+                value = getattr(record, field)
+                state = "valid" if value is not None and value != "" else "missing"
+                if field in ("stripe_size", "stripe_count") and record.filesystem == "nfs" and state == "missing":
+                    state = "not_applicable"
+                writer.writerow(dict(jobid=record.jobid, field=field, state=state, value=value))
 
     total = len(records)
     ok = sum(1 for r in records if r.status == "ok")
@@ -289,6 +947,8 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"Errors        : {errors}")
     print(f"CSV           : {csv_path}")
     print(f"Manifest      : {manifest_path}")
+    print(f"SEFF manifest : {seff_manifest_path}")
+    print(f"Quality report: {quality_path}")
 
     return 0 if errors == 0 else 2
 

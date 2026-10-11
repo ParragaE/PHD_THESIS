@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse, os, sys
 from pathlib import Path
 
-VERSION = "5.6.0"
+VERSION = "5.6.1"
 
 def parse_args(argv=None):
     p = argparse.ArgumentParser()
@@ -15,7 +15,12 @@ def parse_args(argv=None):
     p.add_argument("--scenario", required=True)
     p.add_argument("--file-format", required=True)
     p.add_argument("--filter-mode", required=True, choices=["exact","prefix","extension","regex"])
-    p.add_argument("--filter-value", required=True)
+    p.add_argument(
+    "--filter-values",
+    nargs="+",
+    required=True,
+    help="Uno o más nombres/patrones válidos para identificar el dataset.",
+)
     p.add_argument("--regex-ignore-case", action="store_true")
     p.add_argument("--event", default="JSC24")
     p.add_argument("--module-root", type=Path, default=None)
@@ -64,7 +69,7 @@ def main(argv=None):
     print("Scenario      :", args.scenario)
     print("File format   :", args.file_format)
     print("Filter mode   :", args.filter_mode)
-    print("Filter value  :", args.filter_value)
+    print("Filter value  :", args.filter_values)
     print("DXT input     :", paths["dxt_dir"])
     print("DXT output    :", paths["output_dir"])
     print("Summary dir   :", paths["summary_dir"])
@@ -72,17 +77,35 @@ def main(argv=None):
 
     if args.application == "DeepGalaxy":
         process_all_files_in_directory(
-            str(paths["dxt_dir"]), str(paths["output_dir"]), args.file_format,
-            args.event, str(paths["summary_dir"]), args.application,
-            args.dataset_group, args.scenario, None,
-            args.filter_mode, args.filter_value, args.regex_ignore_case
+            str(paths["dxt_dir"]),
+            str(paths["output_dir"]),
+            args.file_format,
+            args.event,
+            str(paths["summary_dir"]),
+            args.application,
+            args.dataset_group,
+            args.scenario,
+            None,
+            args.filter_mode,
+            None,
+            args.filter_values,
+            args.regex_ignore_case,
         )
     else:
         process_all_files_in_directory(
-            str(paths["dxt_dir"]), str(paths["output_dir"]), args.file_format,
-            args.event, str(paths["summary_dir"]), args.application,
-            None, args.scenario, args.dataset_group,
-            args.filter_mode, args.filter_value, args.regex_ignore_case
+            str(paths["dxt_dir"]),
+            str(paths["output_dir"]),
+            args.file_format,
+            args.event,
+            str(paths["summary_dir"]),
+            args.application,
+            None,
+            args.scenario,
+            args.dataset_group,
+            args.filter_mode,
+            None,
+            args.filter_values,
+            args.regex_ignore_case,
         )
 
     return 0

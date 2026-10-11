@@ -1,0 +1,748 @@
+
+from pathlib import Path
+import time
+import numpy as np
+
+from .io_utils import (
+    load_images_from_folder_limited,
+    load_tiny_val,
+    save_hdf5_train_val,
+    read_hdf5_split,
+    HDF5BatchSequence,
+    inspect_hdf5_dataset_info,
+)
+from .model import (
+    build_and_train_model,
+    build_and_train_model_with_validation,
+    build_and_train_sequence,
+    summarize_history,
+    get_horovod,
+)
+from .distributed_io import read_hdf5_distributed_shared
+from .dataset_identity import (
+    inspect_image_dictionary, build_dataset_id,
+    build_experiment_id, inspect_hdf5_physical_layout,
+    build_tiny_imagenet_expected_info,
+)
+
+
+def run_tiny_real(
+    train_dir, val_dir, dataset_output_root,
+    num_classes=10, images_per_class=100,
+    epochs=1, batch_size=32,
+    chunk_images=None, compression=None, compression_opts=None,
+    filesystem="Local", access_mode="individual",
+    read_strategy="full", execution_mode="local", data_format="HDF5",
+    dataset_scope="train-val",
+):
+    t_total = time.perf_counter()
+    data_format = str(data_format).upper()
+
+    dataset_scope = str(dataset_scope).lower()
+
+    valid_dataset_scopes = {
+        "train-val",
+        "train-only",
+    }
+
+    if dataset_scope not in valid_dataset_scopes:
+        raise ValueError(
+            f"dataset_scope no válido: {dataset_scope!r}. "
+            f"Valores permitidos: {sorted(valid_dataset_scopes)}"
+        )
+
+    # Estrategias HDF5 soportadas por DeepTuneIO-Training.
+    valid_read_strategies = {
+        "full",
+        "full_shared",
+        "distributed_shared",
+        "batch",
+        "direct",
+    }
+
+    if read_strategy not in valid_read_strategies:
+        raise ValueError(
+            f"read_strategy no válida: {read_strategy!r}. "
+            f"Valores permitidos: {sorted(valid_read_strategies)}"
+        )
+
+    # Estado de implementación de v4.
+    #
+    # full:
+    #     lectura completa local/individual. Ya validada.
+    #
+    # full_shared:
+    #     todos los ranks leen el HDF5 compartido completo.
+    #
+    # distributed_shared:
+    #     cada rank lee su partición del HDF5 compartido.
+    #
+    # batch:
+    #     lectura del HDF5 por lotes durante el entrenamiento.
+    #
+    # En este punto de la construcción de v4 mantenemos "full"
+    # como único modo ejecutable hasta integrar los lectores
+    # correspondientes sin alterar el comportamiento validado.
+    implemented_read_strategies = {
+        "full",
+        "full_shared",
+        "distributed_shared",
+        "batch",
+        "direct",
+    }
+
+    if read_strategy not in implemented_read_strategies:
+        raise NotImplementedError(
+            f"La estrategia {read_strategy!r} está definida en v4 "
+            "pero todavía no ha sido integrada en el flujo de ejecución."
+        )
+
+    if data_format == "JPEG" and read_strategy != "direct":
+        raise ValueError("data_format=JPEG requiere read_strategy=direct")
+    if data_format == "HDF5" and read_strategy == "direct":
+        raise ValueError("read_strategy=direct requiere data_format=JPEG")
+
+    if (
+        read_strategy in {"full_shared", "distributed_shared"}
+        and execution_mode.lower() != "hpc"
+    ):
+        raise ValueError(
+            f"read_strategy={read_strategy!r} requiere "
+            "execution_mode='hpc'."
+        )
+
+    # --------------------------------------------------------
+    # Derive access_mode from the actual I/O strategy.
+    #
+    # access_mode is kept in the function signature for
+    # backward compatibility, but DeepTuneIO-Training v4
+    # derives its effective value from read_strategy so that
+    # contradictory experiment metadata cannot be generated.
+    # --------------------------------------------------------
+
+    access_mode_from_strategy = {
+        "full": "individual",
+        "full_shared": "shared",
+        "distributed_shared": "shared",
+        "batch": "individual",
+        "direct": "individual",
+    }
+
+    effective_access_mode = access_mode_from_strategy[read_strategy]
+
+    # JPEG/direct: direct access to original Tiny ImageNet JPEG files.
+    if data_format == "JPEG":
+        hvd = get_horovod(execution_mode)
+        t0 = time.perf_counter()
+        train_dict = load_images_from_folder_limited(train_dir, max_classes=num_classes, max_images_per_class=images_per_class)
+        if not train_dict:
+            raise ValueError("No se encontraron imágenes TRAIN.")
+        source_info = inspect_image_dictionary(train_dict)
+        
+        class_names = source_info["class_names"]
+
+        val_dict = None
+        val_info = None
+
+        if dataset_scope == "train-val":
+            val_dict = load_tiny_val(
+                val_dir,
+                selected_classes=class_names,
+            )
+            val_info = inspect_image_dictionary(val_dict)
+
+        read_time = time.perf_counter() - t0        
+         
+        dataset_id = build_dataset_id("TinyImageNet", source_info, "jpeg", val_info=val_info)
+        experiment_id = build_experiment_id(dataset_id, batch_size, "individual", "direct", epochs=epochs, execution_mode=execution_mode)
+        label_map = {
+            name: i
+            for i, name in enumerate(class_names)
+        }
+
+        train_x = np.concatenate([
+            np.asarray(train_dict[n], dtype=np.uint8)
+            for n in class_names
+        ])
+
+        train_y = np.concatenate([
+            np.full(
+                len(train_dict[n]),
+                label_map[n],
+                dtype=np.int64,
+            )
+            for n in class_names
+        ])
+
+        train_x = train_x.astype(np.float32) / 255.0
+
+        if dataset_scope == "train-val":
+            val_x = np.concatenate([
+                np.asarray(val_dict[n], dtype=np.uint8)
+                for n in class_names
+            ])
+
+            val_y = np.concatenate([
+                np.full(
+                    len(val_dict[n]),
+                    label_map[n],
+                    dtype=np.int64,
+                )
+                for n in class_names
+            ])
+
+            val_x = val_x.astype(np.float32) / 255.0
+
+            _, history, training_time = (
+                build_and_train_model_with_validation(
+                    train_x,
+                    train_y,
+                    val_x,
+                    val_y,
+                    source_info["num_classes"],
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    execution_mode=execution_mode,
+                )
+            )
+
+        else:
+            _, history, training_time = (
+                build_and_train_model(
+                    train_x,
+                    train_y,
+                    source_info["num_classes"],
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    execution_mode=execution_mode,
+                )
+            )
+
+
+        io_size = 0
+        for n in class_names:
+            files = sorted(p for p in (Path(train_dir)/n/"images").iterdir() if p.suffix.lower() in {".jpeg", ".jpg", ".png"})[:int(images_per_class)]
+            io_size += sum(p.stat().st_size for p in files)
+
+        if dataset_scope == "train-val":
+            wanted = set(class_names)
+
+            with (Path(val_dir) / "val_annotations.txt").open(
+                "r",
+                encoding="utf-8",
+            ) as fh:
+                vf = [
+                    Path(val_dir) / "images" / parts[0]
+                    for line in fh
+                    if len(
+                        parts := line.rstrip("\n").split("\t")
+                    ) >= 2
+                    and parts[1] in wanted
+                ]
+
+            io_size += sum(
+                p.stat().st_size
+                for p in vf
+                if p.exists()
+            )
+
+        metrics = {
+            "dataset_id": dataset_id, "experiment_id": experiment_id, "application": "DeepTuneIO-Training",
+            "source_dataset": "TinyImageNet", "source_train_path": str(train_dir), "source_val_path": (str(val_dir) if dataset_scope == "train-val" else ""), "dataset_scope": dataset_scope,
+            "data_format": "JPEG", "filesystem": filesystem, "execution_mode": execution_mode,
+            "access_mode": "individual", "read_strategy": "direct", "num_classes": source_info["num_classes"],
+            "class_names": "|".join(class_names), "uniform_images_per_class": source_info["uniform_images_per_class"],
+            "images_per_class": source_info["images_per_class"], "total_train_images": source_info["total_images"],
+            "total_val_images": (val_info["total_images"] if val_info is not None else 0 ), "image_height": source_info["image_height"],
+            "image_width": source_info["image_width"], "channels": source_info["channels"], "color_mode": source_info["color_mode"],
+            "dtype": source_info["dtype"], "source_shape": source_info["source_shape"], "batch_size": int(batch_size),
+            "epochs": int(epochs), "source_load_time_s": read_time, "transform_write_time_s": 0.0,
+            "training_read_time_s": 0.0, "sequence_setup_time_s": 0.0, "training_time_s": training_time,
+            "io_size_bytes": int(io_size), "hdf5_created_this_run": False, "processed_dataset_path": "",
+        }
+        metrics.update(summarize_history(history))
+        metrics["total_time_s"] = time.perf_counter() - t_total
+        return metrics, history.history, Path(train_dir)
+
+    # --------------------------------------------------------
+    # 1) Build expected dataset identity WITHOUT reading JPEG.
+    # --------------------------------------------------------
+
+    expected_source_info, expected_val_info = (
+        build_tiny_imagenet_expected_info(
+            num_classes=num_classes,
+            train_images_per_class=images_per_class,
+        )
+    )
+
+    if dataset_scope == "train-only":
+        expected_val_info = None
+
+
+    # Requested HDF5 physical layout.
+    chunk_shape = None
+
+    if chunk_images is not None:
+        chunk_shape = (
+            min(
+                int(chunk_images),
+                int(expected_source_info["images_per_class"]),
+            ),
+            expected_source_info["image_height"],
+            expected_source_info["image_width"],
+            expected_source_info["channels"],
+        )
+
+    expected_dataset_id = build_dataset_id(
+        "TinyImageNet",
+        expected_source_info,
+        "hdf5",
+        val_info=expected_val_info,
+        hdf5_chunk_shape=chunk_shape,
+        hdf5_compression=compression,
+        hdf5_compression_opts=compression_opts,
+    )
+
+    hdf5_path = (
+        Path(dataset_output_root)
+        / "HDF5"
+        / f"{expected_dataset_id}.hdf5"
+    )
+
+    # --------------------------------------------------------
+    # 2) Initialize execution context BEFORE any optional
+    #    JPEG source loading.
+    #
+    # Local:
+    #   hvd is None.
+    #
+    # HPC:
+    #   all ranks initialize Horovod here, so rank 0 can be
+    #   identified before any JPEG source I/O occurs.
+    # --------------------------------------------------------
+
+    hvd = get_horovod(execution_mode)
+
+    is_root = (
+        hvd is None
+        or hvd.rank() == 0
+    )
+
+    train_dict = None
+    val_dict = None
+
+    source_load_time = 0.0
+    transform_time = 0.0
+    hdf5_created = False
+
+    # --------------------------------------------------------
+    # 3) Create the physical HDF5 only when necessary.
+    #
+    # If the file already exists:
+    #   no JPEG source data are loaded.
+    #
+    # If the file does not exist:
+    #   local -> the single process loads JPEG and creates it.
+    #   HPC   -> only rank 0 loads JPEG and creates it.
+    # --------------------------------------------------------
+
+    if not hdf5_path.exists() and is_root:
+
+        t0 = time.perf_counter()
+
+        train_dict = load_images_from_folder_limited(
+            train_dir,
+            max_classes=num_classes,
+            max_images_per_class=images_per_class,
+        )
+
+        if not train_dict:
+            raise ValueError(
+                "No se encontraron imágenes TRAIN."
+            )
+
+        jpeg_source_info = inspect_image_dictionary(
+            train_dict
+        )
+
+        jpeg_class_names = jpeg_source_info["class_names"]
+
+        if dataset_scope == "train-val":
+            val_dict = load_tiny_val(
+                val_dir,
+                selected_classes=jpeg_class_names,
+            )
+
+            jpeg_val_info = inspect_image_dictionary(
+                val_dict
+            )
+        else:
+            val_dict = None
+            jpeg_val_info = None
+
+        source_load_time = (
+            time.perf_counter() - t0
+        )
+
+        # Verify that actual JPEG contents produce exactly
+        # the physical dataset identity requested.
+        actual_dataset_id = build_dataset_id(
+            "TinyImageNet",
+            jpeg_source_info,
+            "hdf5",
+            val_info=jpeg_val_info,
+            hdf5_chunk_shape=chunk_shape,
+            hdf5_compression=compression,
+            hdf5_compression_opts=compression_opts,
+        )
+
+        if actual_dataset_id != expected_dataset_id:
+            raise ValueError(
+                "La identidad obtenida desde los JPEG no coincide "
+                "con la identidad esperada. "
+                f"Esperado={expected_dataset_id!r}; "
+                f"real={actual_dataset_id!r}"
+            )
+
+        t0 = time.perf_counter()
+
+        save_hdf5_train_val(
+            train_dict,
+            val_dict,
+            hdf5_path,
+            expected_dataset_id,
+            chunk_images=chunk_images,
+            compression=compression,
+            compression_opts=compression_opts,
+        )
+
+        transform_time = (
+            time.perf_counter() - t0
+        )
+
+        hdf5_created = True
+
+    # --------------------------------------------------------
+    # 4) HPC synchronization.
+    #
+    # Non-root ranks cannot continue until rank 0 has completed
+    # the optional JPEG -> HDF5 transformation.
+    # --------------------------------------------------------
+
+    if hvd is not None:
+
+        import tensorflow as tf
+
+        barrier_token = tf.constant(
+            0,
+            dtype=tf.int32,
+        )
+
+        hvd.allreduce(
+            barrier_token,
+            name="deeptuneio_hdf5_creation_barrier",
+        )
+
+    if not hdf5_path.exists():
+        raise FileNotFoundError(
+            "No se encontró el HDF5 después de la fase "
+            f"de creación: {hdf5_path}"
+        )
+
+    # --------------------------------------------------------
+    # 5) Inspect the physical HDF5 on every rank.
+    #
+    # From this point onward source_info, val_info and
+    # class_names always describe the actual HDF5 being used,
+    # independently of whether it was created or reused.
+    # --------------------------------------------------------
+
+    source_info, val_info, stored_dataset_id = (
+        inspect_hdf5_dataset_info(hdf5_path)
+    )
+
+    if stored_dataset_id != expected_dataset_id:
+        raise ValueError(
+            "El dataset_id almacenado en el HDF5 no coincide "
+            "con el solicitado. "
+            f"Esperado={expected_dataset_id!r}; "
+            f"almacenado={stored_dataset_id!r}"
+        )
+
+    validation_pairs = {
+        "num_classes": (
+            expected_source_info["num_classes"],
+            source_info["num_classes"],
+        ),
+        "train_images_per_class": (
+            expected_source_info["images_per_class"],
+            source_info["images_per_class"],
+        ),
+        "train_total_images": (
+            expected_source_info["total_images"],
+            source_info["total_images"],
+        ),
+        "image_height": (
+            expected_source_info["image_height"],
+            source_info["image_height"],
+        ),
+        "image_width": (
+            expected_source_info["image_width"],
+            source_info["image_width"],
+        ),
+        "channels": (
+            expected_source_info["channels"],
+            source_info["channels"],
+        ),
+        "color_mode": (
+            expected_source_info["color_mode"],
+            source_info["color_mode"],
+        ),
+        "dtype": (
+            expected_source_info["dtype"],
+            source_info["dtype"],
+        ),
+    }
+
+    if dataset_scope == "train-val":
+        if val_info is None:
+            raise ValueError(
+                "Se solicitó dataset_scope='train-val', "
+                "pero el HDF5 no contiene datos de validación."
+            )
+
+        validation_pairs.update({
+            "val_images_per_class": (
+                expected_val_info["images_per_class"],
+                val_info["images_per_class"],
+            ),
+            "val_total_images": (
+                expected_val_info["total_images"],
+                val_info["total_images"],
+            ),
+        })
+    else:
+        if val_info is not None:
+            raise ValueError(
+                "Se solicitó dataset_scope='train-only', "
+                "pero el HDF5 contiene datos de validación."
+            )
+
+    mismatches = {
+        name: values
+        for name, values in validation_pairs.items()
+        if values[0] != values[1]
+    }
+
+    if mismatches:
+        raise ValueError(
+            "El HDF5 físico no coincide con la "
+            f"configuración solicitada: {mismatches}"
+        )
+
+    class_names = source_info["class_names"]
+
+    dataset_id = expected_dataset_id
+
+    experiment_id = build_experiment_id(
+        dataset_id,
+        batch_size,
+        effective_access_mode,
+        read_strategy,
+        epochs=epochs,
+        execution_mode=execution_mode,
+    )
+
+    # io_size_bytes represents the physical size of the HDF5
+    # dataset, independently of whether it was created or reused
+    # in the current execution.
+    io_size = hdf5_path.stat().st_size
+
+    # 4) Verify actual HDF5 physical layout.
+    physical = inspect_hdf5_physical_layout(hdf5_path)
+
+    # Sequence setup applies only to read_strategy="batch".
+    sequence_setup_time = 0.0
+
+    # 5) Read/train according to the selected strategy.
+    #
+    # full / full_shared / distributed_shared:
+    #     HDF5 is read before model.fit().
+    #
+    # batch:
+    #     only the Sequence objects are prepared here.
+    #     Actual HDF5 reads occur inside model.fit() through
+    #     HDF5BatchSequence.__getitem__().
+
+    if read_strategy in {
+        "full",
+        "full_shared",
+        "distributed_shared",
+    }:
+
+        t0 = time.perf_counter()
+
+        if read_strategy in {"full", "full_shared"}:
+
+            train_x, train_y = read_hdf5_split(
+                hdf5_path,
+                "train",
+                class_names,
+            )
+
+            if dataset_scope == "train-val":
+                val_x, val_y = read_hdf5_split(
+                    hdf5_path,
+                    "val",
+                    class_names,
+                )
+
+        else:  # distributed_shared
+
+            train_x, train_y = read_hdf5_distributed_shared(
+                hdf5_path,
+                "train",
+                class_names,
+                execution_mode=execution_mode,
+            )
+            
+            if dataset_scope == "train-val":
+                val_x, val_y = read_hdf5_distributed_shared(
+                    hdf5_path,
+                    "val",
+                    class_names,
+                    execution_mode=execution_mode,
+                )
+
+        read_time = time.perf_counter() - t0
+
+        # Full-read strategies materialize uint8 arrays first.
+        # Normalization therefore happens after the HDF5 read.
+
+        train_x = train_x.astype(np.float32) / 255.0
+
+        if dataset_scope == "train-val":
+            val_x = val_x.astype(np.float32) / 255.0
+
+        if dataset_scope == "train-val":
+            _, history, training_time = (
+                build_and_train_model_with_validation(
+                    train_x,
+                    train_y,
+                    val_x,
+                    val_y,
+                    source_info["num_classes"],
+                    epochs=epochs,
+                    batch_size=batch_size,
+                    execution_mode=execution_mode,
+                )
+            )
+        else:
+            _, history, training_time = build_and_train_model(
+                train_x,
+                train_y,
+                source_info["num_classes"],
+                epochs=epochs,
+                batch_size=batch_size,
+                execution_mode=execution_mode,
+            )
+
+    elif read_strategy == "batch":
+
+        # Only construct the indexing structures here.
+        # Image data are NOT loaded into RAM at this point.
+        t0 = time.perf_counter()
+
+        train_sequence = HDF5BatchSequence(
+            hdf5_path,
+            split="train",
+            batch_size=batch_size,
+            shuffle=True,
+            class_names=class_names,
+        )
+
+        if dataset_scope == "train-val":
+            val_sequence = HDF5BatchSequence(
+                hdf5_path,
+                split="val",
+                batch_size=batch_size,
+                shuffle=False,
+                class_names=class_names,
+            )
+        else:
+            val_sequence = None
+
+        sequence_setup_time = time.perf_counter() - t0
+
+        # There is no equivalent pre-training full-read phase.
+        # HDF5 reads and normalization occur during model.fit().
+        read_time = 0.0
+
+        _, history, training_time = build_and_train_sequence(
+            train_sequence,
+            source_info["num_classes"],
+            epochs=epochs,
+            execution_mode=execution_mode,
+            validation_sequence=val_sequence,
+        )
+
+    else:
+        raise RuntimeError(
+            f"Estrategia implementada sin flujo asociado: "
+            f"{read_strategy!r}"
+        )
+
+    metrics = {
+        "dataset_id": dataset_id,
+        "experiment_id": experiment_id,
+        "application": "DeepTuneIO-Training",
+        "source_dataset": "TinyImageNet",
+        "source_train_path": str(train_dir),
+        "source_val_path": (str(val_dir) if dataset_scope == "train-val" else ""), "dataset_scope": dataset_scope,
+
+        "data_format": "HDF5",
+        "filesystem": filesystem,
+        "execution_mode": execution_mode,
+        "access_mode": effective_access_mode,
+        "read_strategy": read_strategy,
+
+        "num_classes": source_info["num_classes"],
+        "class_names": "|".join(source_info["class_names"]),
+        "uniform_images_per_class": source_info["uniform_images_per_class"],
+        "images_per_class": source_info["images_per_class"],
+        "total_train_images": source_info["total_images"],
+        "total_val_images": (val_info["total_images"] if val_info is not None else 0 ),
+
+
+        "image_height": source_info["image_height"],
+        "image_width": source_info["image_width"],
+        "channels": source_info["channels"],
+        "color_mode": source_info["color_mode"],
+        "dtype": source_info["dtype"],
+        "source_shape": source_info["source_shape"],
+
+        "hdf5_chunk_shape_requested": (
+            "contiguous" if chunk_shape is None
+            else "x".join(map(str, chunk_shape))
+        ),
+        "hdf5_compression_requested": compression or "none",
+        "hdf5_compression_level_requested": compression_opts,
+        "hdf5_layout_actual": "|".join(physical["layouts"]),
+        "hdf5_compression_actual": "|".join(physical["compressions"]),
+
+        "batch_size": int(batch_size),
+        "epochs": int(epochs),
+
+        "source_load_time_s": source_load_time,
+        "transform_write_time_s": transform_time,
+        "training_read_time_s": read_time,
+        "sequence_setup_time_s": sequence_setup_time,
+        "training_time_s": training_time,
+        "io_size_bytes": int(io_size),
+        "hdf5_created_this_run": bool(hdf5_created),
+        "processed_dataset_path": str(hdf5_path),
+    }
+
+    metrics.update(summarize_history(history))
+    metrics["total_time_s"] = time.perf_counter() - t_total
+    return metrics, history.history, hdf5_path

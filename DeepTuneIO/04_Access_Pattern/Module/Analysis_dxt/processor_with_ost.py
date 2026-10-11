@@ -13,19 +13,21 @@ from Analysis_dxt.lustre_layout import LustreLayoutParser
 
 def process_darshan_file_interactive(
     file_path, file_format, app_name,
-    filter_mode="extension", filter_value=None, regex_ignore_case=False
+    filter_mode="extension", filter_value=None, filter_values=None, regex_ignore_case=False
 ):
     if app_name not in ['DeepGalaxy', 'DLIOv1']:
         raise ValueError(f"Nombre de aplicación no soportado: {app_name}")
 
-    if filter_value is None:
+    if filter_value is None and not filter_values:
         filter_value = file_format
 
     dataset_filter = DatasetFilter(
         mode=filter_mode,
         value=filter_value,
+        values=filter_values,
         regex_ignore_case=regex_ignore_case,
     )
+
     dataset_filter.validate()
 
     es_operations_all = []
@@ -1085,7 +1087,7 @@ def perform_analysis_and_save_vbuena(dtfrm, output_path, jobid, fs_type, total_w
 ###########################
 def process_all_files_in_directory(directory_path, output_directory, file_format, name_envet, 
                                    output_summary_path, app_name, dir_fs=None, fs_scenarios=None, dir_bench=None,
-                                   filter_mode="extension", filter_value=None, regex_ignore_case=False):
+                                   filter_mode="extension", filter_value=None, filter_values=None, regex_ignore_case=False):
     """
     Procesa todos los archivos en un directorio con salida visual limpia en Jupyter.
     """
@@ -1120,8 +1122,17 @@ def process_all_files_in_directory(directory_path, output_directory, file_format
                 # Recortamos el nombre del archivo si es muy largo para que no desfigure la barra
                 pbar.set_postfix_str(f"Fichero actual: {filename[:40]}...")
                 
-                df, jobid, fs_type, total_write_count, total_read_count, stripe_size, stripe_count, f_format, app_variables, lustre_layouts_by_file = process_darshan_file_interactive(file_path, file_format, app_name, filter_mode, filter_value, regex_ignore_case)
-                
+                df, jobid, fs_type, total_write_count, total_read_count, \
+                stripe_size, stripe_count, f_format, app_variables, \
+                lustre_layouts_by_file = process_darshan_file_interactive(
+                    file_path=file_path,
+                    file_format=file_format,
+                    app_name=app_name,
+                    filter_mode=filter_mode,
+                    filter_value=filter_value,
+                    filter_values=filter_values,
+                    regex_ignore_case=regex_ignore_case,
+                )
                 output_path = os.path.join(output_directory, filename.replace('.txt', '.csv'))
                 if not os.path.exists(output_path):
                     df.to_csv(output_path, index=False)

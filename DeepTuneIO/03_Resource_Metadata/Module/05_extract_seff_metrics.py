@@ -572,16 +572,33 @@ def parse_seff_report(seff_file: Path, encoding: str = "utf-8") -> SeffMetrics:
     )
 
 
-def discover_seff_reports(seff_dir: Path) -> dict[str, Path]:
-    """Build a JobID -> seff report path index."""
+def discover_seff_reports(seff_dir: Path, encoding: str = "utf-8") -> dict[str, Path]:
+    """Index reports using their internal `Job ID:` field (source of truth).
+
+    Reports with no readable Job ID are excluded, never guessed from filenames.
+    Duplicate internal JobIDs are rejected to prevent ambiguous joins.
+    """
     reports: dict[str, Path] = {}
     for path in sorted(seff_dir.glob("*.txt")):
-        # Prefer JobID embedded in the filename. If multiple numbers exist, the
-        # SLURM JobID is usually the longest numeric token.
-        numbers = re.findall(r"\d+", path.stem)
-        if numbers:
-            jobid = max(numbers, key=len)
-            reports[jobid] = path
+        try:
+            with path.open("r", encoding=encoding, errors="replace") as handle:
+                jobid = None
+                for line in handle:
+                    match = re.match(r"^\s*Job\s*ID\s*:\s*(.+)$", line, re.I)
+                    if match:
+                        jobid = normalize_jobid(match.group(1))
+                        break
+        except OSError as exc:
+            print(f"WARNING: Cannot read seff report {path}: {exc}", file=sys.stderr)
+            continue
+        if jobid is None:
+            print(f"WARNING: No Job ID in seff report: {path.name}", file=sys.stderr)
+            continue
+        if jobid in reports:
+            raise ValueError(
+                f"Duplicate seff reports for JobID {jobid}: {reports[jobid]} and {path}"
+            )
+        reports[jobid] = path
     return reports
 
 
@@ -608,14 +625,20 @@ def main(argv: Optional[list[str]] = None) -> int:
         print(f"ERROR: input CSV does not exist: {input_csv}", file=sys.stderr)
         return 1
 
-    if not seff_dir.exists():
+    if not seff_dir.is_dir():
         print(f"ERROR: seff directory does not exist: {seff_dir}", file=sys.stderr)
         return 1
 
-    df = pd.read_csv(input_csv)
+    header = pd.read_csv(input_csv, nrows=0).columns
+    id_types = {c: "string" for c in ("jobid", "JobID", "job_id", "JOBID", "slurm_jobid", "SLURM_JOB_ID") if c in header}
+    df = pd.read_csv(input_csv, dtype=id_types)
     jobid_column = find_jobid_column(df, explicit_column=args.jobid_column)
 
-    seff_index = discover_seff_reports(seff_dir)
+    try:
+        seff_index = discover_seff_reports(seff_dir, encoding=args.encoding)
+    except ValueError as exc:
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
     output_records: list[dict[str, object]] = []
 
     # If campaign metadata was omitted because --campaign-root was used, try to
@@ -665,6 +688,9 @@ def main(argv: Optional[list[str]] = None) -> int:
                 )
             else:
                 metrics = parse_seff_report(seff_file, encoding=args.encoding)
+                if metrics.seff_jobid and metrics.seff_jobid != jobid:
+                    metrics.seff_status = "error"
+                    metrics.seff_message = f"jobid_mismatch:expected={jobid},reported={metrics.seff_jobid}"
 
         enriched_record = {**base_record, **asdict(metrics)}
         output_records.append(enriched_record)
@@ -694,7 +720,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     print(f"  Errors     : {errors}")
     print(f"\nCSV saved to: {output_path}")
 
-    if args.strict and (incomplete or missing or errors):
+    if (len(df) > 0 and ok == 0) or (args.strict and (incomplete or missing or errors)):
         return 2
     return 0
 
