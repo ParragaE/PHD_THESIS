@@ -185,8 +185,8 @@ Los cuatro scripts de `01_Execution/DLIOv1/DeepTuneIO_DLIOv1_Execution_Scripts/`
 |---|---|---|
 | `HDF5_64bs` | `hdf5`, `shared` | 1 archivo, tamaño 786432, longitud de registro 786432, batch 64 |
 | `NPZ_64bs` | `npz`, `multi` | `P` archivos, tamaño por archivo `786432/P`, registro 131072, batch 64 |
-| `TFRecord_256kts_64bs` | Distribución como NPZ | Tamaño de shard `ts=262144` |
-| `TFRecord_1mts_64bs` | Distribución como NPZ | Tamaño de shard `ts=1048576` |
+| `TFRecord_256kts_64bs` | `tfrecord`, `multi` | Tamaño de shard `ts=262144` |
+| `TFRecord_1mts_64bs` | `tfrecord`, `multi` | Tamaño de shard `ts=1048576` |
 
 En esta campaña `P = 4 × número de nodos`, `stripe_count = número de nodos` y `stripe_size = 1 MiB`, según el README de los scripts. Las fases controladas mediante `DLIO_PHASE` son `generate`, `read` y `both`. Los scripts no borran silenciosamente datasets preexistentes; `DLIO_ALLOW_EXISTING_DATASET=1` debe establecerse únicamente cuando su reutilización sea intencionada.
 
